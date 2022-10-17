@@ -3,6 +3,7 @@ package main
 import (
 	"time"
 	"fmt"
+	"sort"
 )
 
 // Bid-Ask Order pair
@@ -20,6 +21,12 @@ type Order struct {
 	Timestamp int64
 }
 
+type Orders []*Order
+
+func (o Orders) Len() int { return len(o) }
+func (o Orders) Swap(i, j int) { o[i], o[j] = o[j], o[i] }
+func (o Orders) Less(i, j int) bool { return o[i].Timestamp < o[j].Timestamp } // FIFO order queue
+
 func NewOrder(bid bool, size float64) *Order {
 	return &Order{
 		Size: size,
@@ -36,9 +43,23 @@ func (o *Order) String() string {
 // Limit order consists of orders at Price of varied Size
 type Limit struct {
 	Price float64
-	Orders []*Order // arr of orders at the target Price
+	Orders Orders // arr of orders at the target Price | replace []*Order with Order to resolve compiler error not detecting that Orders == []*Order
 	TotalVolume float64 // total Size of orders
 }
+
+type Limits []*Limit
+
+type ByBestAsk struct{ Limits }
+
+func (a ByBestAsk) Len() int { return len(a.Limits) }
+func (a ByBestAsk) Swap(i, j int) { a.Limits[i], a.Limits[j] = a.Limits[j], a.Limits[i] }
+func (a ByBestAsk) Less(i, j int) bool { return a.Limits[i].Price < a.Limits[j].Price } // sort asks low to high. counterparty bid matches lowest ask
+
+type ByBestBid struct{ Limits }
+
+func (b ByBestBid) Len() int { return len(b.Limits) }
+func (b ByBestBid) Swap(i, j int) { b.Limits[i], b.Limits[j] = b.Limits[j], b.Limits[i] }
+func (b ByBestBid) Less(i, j int) bool { return b.Limits[i].Price > b.Limits[j].Price } // sort bids high to low. counterparty ask matches highest bid
 
 func NewLimit(price float64) *Limit {
 	return &Limit{
@@ -70,7 +91,8 @@ func (l *Limit) DeleteOrder(o *Order) {
 	o.Limit = nil // remove ref
 	l.TotalVolume -= o.Size
 
-	// TODO re-sort  orders
+	// re-sort updated order of Orders after removing o
+	sort.Sort(l.Orders)
 }
 
 // collection of orders
